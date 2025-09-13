@@ -77,7 +77,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         public int velocity = 0;
     }
 
-    private static abstract class I2CDevice {
+    public static abstract class I2CDevice {
         protected abstract int getValue();
 
         protected abstract int getInitLength();
@@ -87,6 +87,8 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         protected abstract int getAddress();
 
         protected abstract BitSet getConfig();
+
+        protected abstract void parseUpdate(BitSet data, int start);
     }
 
     public static class APDS9151 extends I2CDevice {
@@ -119,25 +121,169 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         protected BitSet getConfig() {
             return config;
         }
+
+        protected void parseUpdate(BitSet data, int start) {
+            int index = start;
+
+            disconnected = data.get(index++);
+
+            byte[] proximityChunk = data
+                .get(
+                    index,
+                    index + 11
+                )
+                .toByteArray();
+
+            byte[] paddedProximityChunk = new byte[2];
+
+            System.arraycopy(
+                proximityChunk,
+                0,
+                paddedProximityChunk,
+                0,
+                proximityChunk.length
+            );
+
+            proximity = ByteBuffer
+                .wrap(paddedProximityChunk)
+                .order(BYTE_ORDER)
+                .getShort();
+
+            index += 11;
+
+            byte[] infraredChunk = data
+                .get(
+                    index,
+                    index + 20
+                )
+                .toByteArray();
+
+            byte[] paddedInfraredChunk = new byte[4];
+
+            System.arraycopy(
+                infraredChunk,
+                0,
+                paddedInfraredChunk,
+                0,
+                infraredChunk.length
+            );
+
+            infrared = ByteBuffer
+                .wrap(paddedInfraredChunk)
+                .order(BYTE_ORDER)
+                .getInt();
+
+            index += 20;
+
+            byte[] redChunk = data
+                .get(
+                    index,
+                    index + 20
+                )
+                .toByteArray();
+
+            byte[] paddedRedChunk = new byte[4];
+
+            System.arraycopy(
+                redChunk,
+                0,
+                paddedRedChunk,
+                0,
+                redChunk.length
+            );
+
+            red = ByteBuffer
+                .wrap(paddedRedChunk)
+                .order(BYTE_ORDER)
+                .getInt();
+
+            index += 20;
+
+            byte[] greenChunk = data
+                .get(
+                    index,
+                    index + 20
+                )
+                .toByteArray();
+
+            byte[] paddedGreenChunk = new byte[4];
+
+            System.arraycopy(
+                greenChunk,
+                0,
+                paddedGreenChunk,
+                0,
+                greenChunk.length
+            );
+
+            green = ByteBuffer
+                .wrap(paddedGreenChunk)
+                .order(BYTE_ORDER)
+                .getInt();
+
+            index += 20;
+
+            byte[] blueChunk = data
+                .get(
+                    index,
+                    index + 20
+                )
+                .toByteArray();
+
+            byte[] paddedBlueChunk = new byte[4];
+
+            System.arraycopy(
+                blueChunk,
+                0,
+                paddedBlueChunk,
+                0,
+                blueChunk.length
+            );
+
+            blue = ByteBuffer
+                .wrap(paddedBlueChunk)
+                .order(BYTE_ORDER)
+                .getInt();
+        }
     }
 
     public static class VL53L5CX extends I2CDevice {
-        private final BitSet config = new BitSet(0);
+        public enum Resolution {
+            GRID_4x4(0),
+            GRID_8x8(1);
+
+            final byte value;
+
+            Resolution(int value) {
+                this.value = (byte) value;
+            }
+        }
+
+        private final BitSet config = new BitSet(1);
 
         public boolean disconnected = false;
 
-        public float distance;
+        public final short[] distances;
+
+        public VL53L5CX(Resolution resolution) {
+            config.set(
+                0,
+                resolution.value == 1
+            );
+
+            distances = resolution.value == 0 ? new short[16] : new short[64];
+        }
 
         protected int getValue() {
             return 1;
         }
 
         protected int getInitLength() {
-            return 0;
+            return 1;
         }
 
         protected int getUpdateLength() {
-            return 17;
+            return config.get(0) ? 705 : 177;
         }
 
         protected int getAddress() {
@@ -146,6 +292,38 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
 
         protected BitSet getConfig() {
             return config;
+        }
+
+        protected void parseUpdate(BitSet data, int start) {
+            int index = start;
+
+            disconnected = data.get(index++);
+
+            for (int k = 0; k < (getUpdateLength() - 1) / 11; k++) {
+                byte[] chunk = data
+                    .get(
+                        index,
+                        index + 11
+                    )
+                    .toByteArray();
+
+                index += 11;
+
+                byte[] paddedChunk = new byte[2];
+
+                System.arraycopy(
+                    chunk,
+                    0,
+                    paddedChunk,
+                    0,
+                    chunk.length
+                );
+
+                distances[k] = ByteBuffer
+                    .wrap(paddedChunk)
+                    .order(BYTE_ORDER)
+                    .getShort();
+            }
         }
     }
 
@@ -175,6 +353,34 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         protected BitSet getConfig() {
             return config;
         }
+
+        protected void parseUpdate(BitSet data, int start) {
+            int index = start;
+
+            disconnected = data.get(index++);
+
+            byte[] chunk = data
+                .get(
+                    index,
+                    index + 16
+                )
+                .toByteArray();
+
+            byte[] paddedChunk = new byte[4];
+
+            System.arraycopy(
+                chunk,
+                0,
+                paddedChunk,
+                0,
+                chunk.length
+            );
+
+            distance = ByteBuffer
+                .wrap(paddedChunk)
+                .order(BYTE_ORDER)
+                .getShort() & 0xFFFF;
+        }
     }
 
     public static class GoBildaPinpoint extends I2CDevice {
@@ -196,6 +402,14 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         public float xVelocity;
         public float yVelocity;
         public float hVelocity;
+
+        private void packConfigFloat(int start, float data) {
+            int bits = Float.floatToIntBits(data);
+
+            for (int i = 0; i < 32; i++) {
+                config.set(start + i, ((bits >> (31 - i)) & 1) == 1);
+            }
+        }
 
         /**
          * @param xPodOffset the offset of your forward tracking pod from the tracking center in millimeters
@@ -241,7 +455,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         }
 
         protected int getUpdateLength() {
-            return 105;
+            return 201;
         }
 
         protected int getAddress() {
@@ -250,6 +464,178 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
 
         protected BitSet getConfig() {
             return config;
+        }
+
+        protected void parseUpdate(BitSet data, int start) {
+            int index = start;
+
+            disconnected = data.get(index++);
+
+            byte[] deviceStatusChunk = data
+                .get(
+                    index,
+                    index + 8
+                )
+                .toByteArray();
+
+            byte[] paddedDeviceStatusChunk = new byte[2];
+
+            System.arraycopy(
+                deviceStatusChunk,
+                0,
+                paddedDeviceStatusChunk,
+                0,
+                deviceStatusChunk.length
+            );
+
+            deviceStatus = ByteBuffer
+                .wrap(paddedDeviceStatusChunk)
+                .order(BYTE_ORDER)
+                .getShort();
+
+            index += 8;
+
+            byte[] xPositionChunk = data
+                .get(
+                    index,
+                    index + 32
+                )
+                .toByteArray();
+
+            byte[] paddedXPositionChunk = new byte[4];
+
+            System.arraycopy(
+                xPositionChunk,
+                0,
+                paddedXPositionChunk,
+                0,
+                xPositionChunk.length
+            );
+
+            xPosition = ByteBuffer
+                .wrap(paddedXPositionChunk)
+                .order(BYTE_ORDER)
+                .getFloat();
+
+            index += 32;
+
+            byte[] yPositionChunk = data
+                .get(
+                    index,
+                    index + 32
+                )
+                .toByteArray();
+
+            byte[] paddedYPositionChunk = new byte[4];
+
+            System.arraycopy(
+                yPositionChunk,
+                0,
+                paddedYPositionChunk,
+                0,
+                yPositionChunk.length
+            );
+
+            yPosition = ByteBuffer
+                .wrap(paddedYPositionChunk)
+                .order(BYTE_ORDER)
+                .getFloat();
+
+            index += 32;
+
+            byte[] hOrientationChunk = data
+                .get(
+                    index,
+                    index + 32
+                )
+                .toByteArray();
+
+            byte[] paddedHOrientationChunk = new byte[4];
+
+            System.arraycopy(
+                hOrientationChunk,
+                0,
+                paddedHOrientationChunk,
+                0,
+                hOrientationChunk.length
+            );
+
+            hOrientation = ByteBuffer
+                .wrap(paddedHOrientationChunk)
+                .order(BYTE_ORDER)
+                .getFloat();
+
+            index += 32;
+
+            byte[] xVelocityChunk = data
+                .get(
+                    index,
+                    index + 32
+                )
+                .toByteArray();
+
+            byte[] paddedXVelocityChunk = new byte[4];
+
+            System.arraycopy(
+                xVelocityChunk,
+                0,
+                paddedXVelocityChunk,
+                0,
+                xVelocityChunk.length
+            );
+
+            xVelocity = ByteBuffer
+                .wrap(paddedXVelocityChunk)
+                .order(BYTE_ORDER)
+                .getFloat();
+
+            index += 32;
+
+            byte[] yVelocityChunk = data
+                .get(
+                    index,
+                    index + 32
+                )
+                .toByteArray();
+
+            byte[] paddedYVelocityChunk = new byte[4];
+
+            System.arraycopy(
+                yVelocityChunk,
+                0,
+                paddedYVelocityChunk,
+                0,
+                yVelocityChunk.length
+            );
+
+            yVelocity = ByteBuffer
+                .wrap(paddedYVelocityChunk)
+                .order(BYTE_ORDER)
+                .getFloat();
+
+            index += 32;
+
+            byte[] hVelocityChunk = data
+                .get(
+                    index,
+                    index + 32
+                )
+                .toByteArray();
+
+            byte[] paddedHVelocityChunk = new byte[4];
+
+            System.arraycopy(
+                hVelocityChunk,
+                0,
+                paddedHVelocityChunk,
+                0,
+                hVelocityChunk.length
+            );
+
+            hVelocity = ByteBuffer
+                .wrap(paddedHVelocityChunk)
+                .order(BYTE_ORDER)
+                .getFloat();
         }
     }
 
@@ -651,6 +1037,13 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
 
         updateLength = 2 + (updateLength + 7) / 8;
 
+        if (updateLength > 100) {
+            throwException(
+                IllegalStateException.class,
+                "Maximum bulk-read length of 100 bytes exceeded"
+            );
+        }
+
         byte[] data = new byte[(initLength + 7) / 8];
 
         System.arraycopy(
@@ -680,36 +1073,6 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         update();
 
         ready = true;
-    }
-
-    private static float halfToFloat(short half) {
-        int sign = (half >> 15) & 0x00000001;
-        int exponent = (half >> 10) & 0x0000001F;
-        int fraction = half & 0x000003FF;
-
-        if (exponent == 0) {
-            if (fraction == 0) {
-                return Float.intBitsToFloat(sign << 31);
-            } else {
-                while ((fraction & 0x00000400) == 0) {
-                    fraction <<= 1;
-                    exponent -= 1;
-                }
-                exponent += 1;
-                fraction &= ~0x00000400;
-            }
-        } else if (exponent == 31) {
-            if (fraction == 0) {
-                return Float.intBitsToFloat((sign << 31) | 0x7F800000);
-            } else {
-                return Float.intBitsToFloat((sign << 31) | 0x7F800000 | (fraction << 13));
-            }
-        }
-
-        exponent = exponent + (127 - 15);
-        fraction = fraction << 13;
-
-        return Float.intBitsToFloat((sign << 31) | (exponent << 23) | fraction);
     }
 
     /**
@@ -750,13 +1113,9 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
 
         disconnected = false;
 
-        BitSet data = BitSet.valueOf(Arrays.copyOfRange(
-            rawData,
-            1,
-            rawData.length - 2
-        ));
+        BitSet data = BitSet.valueOf(rawData);
 
-        int index = 0;
+        int index = 8;
 
         for (int i = 0; i < config.analogDigitalDevices.length; i++) {
             switch (config.analogDigitalDevices[i]) {
@@ -909,365 +1268,8 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
                 I2CDevice device = config.i2cBuses[i]
                     .get(j);
 
-                if (device.getClass().equals(APDS9151.class)) {
-                    APDS9151 apds9151 = (APDS9151) device;
-
-                    apds9151.disconnected = data.get(index++);
-
-                    byte[] proximityChunk = data
-                        .get(
-                            index,
-                            index + 11
-                        )
-                        .toByteArray();
-
-                    byte[] paddedProximityChunk = new byte[2];
-
-                    System.arraycopy(
-                        proximityChunk,
-                        0,
-                        paddedProximityChunk,
-                        0,
-                        proximityChunk.length
-                    );
-
-                    apds9151.proximity = ByteBuffer
-                        .wrap(paddedProximityChunk)
-                        .order(BYTE_ORDER)
-                        .getShort();
-
-                    index += 11;
-
-                    byte[] infraredChunk = data
-                        .get(
-                            index,
-                            index + 20
-                        )
-                        .toByteArray();
-
-                    byte[] paddedInfraredChunk = new byte[4];
-
-                    System.arraycopy(
-                        infraredChunk,
-                        0,
-                        paddedInfraredChunk,
-                        0,
-                        infraredChunk.length
-                    );
-
-                    apds9151.infrared = ByteBuffer
-                        .wrap(paddedInfraredChunk)
-                        .order(BYTE_ORDER)
-                        .getInt();
-
-                    index += 20;
-
-                    byte[] redChunk = data
-                        .get(
-                            index,
-                            index + 20
-                        )
-                        .toByteArray();
-
-                    byte[] paddedRedChunk = new byte[4];
-
-                    System.arraycopy(
-                        redChunk,
-                        0,
-                        paddedRedChunk,
-                        0,
-                        redChunk.length
-                    );
-
-                    apds9151.red = ByteBuffer
-                        .wrap(paddedRedChunk)
-                        .order(BYTE_ORDER)
-                        .getInt();
-
-                    index += 20;
-
-                    byte[] greenChunk = data
-                        .get(
-                            index,
-                            index + 20
-                        )
-                        .toByteArray();
-
-                    byte[] paddedGreenChunk = new byte[4];
-
-                    System.arraycopy(
-                        greenChunk,
-                        0,
-                        paddedGreenChunk,
-                        0,
-                        greenChunk.length
-                    );
-
-                    apds9151.green = ByteBuffer
-                        .wrap(paddedGreenChunk)
-                        .order(BYTE_ORDER)
-                        .getInt();
-
-                    index += 20;
-
-                    byte[] blueChunk = data
-                        .get(
-                            index,
-                            index + 20
-                        )
-                        .toByteArray();
-
-                    byte[] paddedBlueChunk = new byte[4];
-
-                    System.arraycopy(
-                        blueChunk,
-                        0,
-                        paddedBlueChunk,
-                        0,
-                        blueChunk.length
-                    );
-
-                    apds9151.blue = ByteBuffer
-                        .wrap(paddedBlueChunk)
-                        .order(BYTE_ORDER)
-                        .getInt();
-
-                    index += 20;
-                }
-
-                if (device.getClass().equals(VL53L5CX.class)) {
-                    VL53L5CX vl53L5CX = (VL53L5CX) device;
-
-                    vl53L5CX.disconnected = data.get(index++);
-
-                    byte[] chunk = data
-                        .get(
-                            index,
-                            index + 16
-                        )
-                        .toByteArray();
-
-                    byte[] paddedChunk = new byte[4];
-
-                    System.arraycopy(
-                        chunk,
-                        0,
-                        paddedChunk,
-                        0,
-                        chunk.length
-                    );
-
-                    vl53L5CX.distance = ByteBuffer
-                        .wrap(paddedChunk)
-                        .order(BYTE_ORDER)
-                        .getShort() & 0xFFFF;
-
-                    index += 16;
-                }
-
-                if (device.getClass().equals(VL53L0X.class)) {
-                    VL53L0X vl53L0X = (VL53L0X) device;
-
-                    vl53L0X.disconnected = data.get(index++);
-
-                    byte[] chunk = data
-                        .get(
-                            index,
-                            index + 16
-                        )
-                        .toByteArray();
-
-                    byte[] paddedChunk = new byte[4];
-
-                    System.arraycopy(
-                        chunk,
-                        0,
-                        paddedChunk,
-                        0,
-                        chunk.length
-                    );
-
-                    vl53L0X.distance = ByteBuffer
-                        .wrap(paddedChunk)
-                        .order(BYTE_ORDER)
-                        .getShort() & 0xFFFF;
-
-                    index += 16;
-                }
-
-                if (device.getClass().equals(GoBildaPinpoint.class)) {
-                    GoBildaPinpoint goBildaPinpoint = (GoBildaPinpoint) device;
-
-                    goBildaPinpoint.disconnected = data.get(index++);
-
-                    byte[] deviceStatusChunk = data
-                        .get(
-                            index,
-                            index + 8
-                        )
-                        .toByteArray();
-
-                    byte[] paddedDeviceStatusChunk = new byte[2];
-
-                    System.arraycopy(
-                        deviceStatusChunk,
-                        0,
-                        paddedDeviceStatusChunk,
-                        0,
-                        deviceStatusChunk.length
-                    );
-
-                    goBildaPinpoint.deviceStatus = ByteBuffer
-                        .wrap(paddedDeviceStatusChunk)
-                        .order(BYTE_ORDER)
-                        .getShort();
-
-                    index += 8;
-
-                    byte[] xPositionChunk = data
-                        .get(
-                            index,
-                            index + 16
-                        )
-                        .toByteArray();
-
-                    byte[] paddedXPositionChunk = new byte[2];
-
-                    System.arraycopy(
-                        xPositionChunk,
-                        0,
-                        paddedXPositionChunk,
-                        0,
-                        xPositionChunk.length
-                    );
-
-                    goBildaPinpoint.xPosition = halfToFloat(ByteBuffer
-                        .wrap(paddedXPositionChunk)
-                        .order(BYTE_ORDER)
-                        .getShort());
-
-                    index += 16;
-
-                    byte[] yPositionChunk = data
-                        .get(
-                            index,
-                            index + 16
-                        )
-                        .toByteArray();
-
-                    byte[] paddedYPositionChunk = new byte[2];
-
-                    System.arraycopy(
-                        yPositionChunk,
-                        0,
-                        paddedYPositionChunk,
-                        0,
-                        yPositionChunk.length
-                    );
-
-                    goBildaPinpoint.yPosition = halfToFloat(ByteBuffer
-                        .wrap(paddedYPositionChunk)
-                        .order(BYTE_ORDER)
-                        .getShort());
-
-                    index += 16;
-
-                    byte[] hOrientationChunk = data
-                        .get(
-                            index,
-                            index + 16
-                        )
-                        .toByteArray();
-
-                    byte[] paddedHOrientationChunk = new byte[2];
-
-                    System.arraycopy(
-                        hOrientationChunk,
-                        0,
-                        paddedHOrientationChunk,
-                        0,
-                        hOrientationChunk.length
-                    );
-
-                    goBildaPinpoint.hOrientation = halfToFloat(ByteBuffer
-                        .wrap(paddedHOrientationChunk)
-                        .order(BYTE_ORDER)
-                        .getShort());
-
-                    index += 16;
-
-                    byte[] xVelocityChunk = data
-                        .get(
-                            index,
-                            index + 16
-                        )
-                        .toByteArray();
-
-                    byte[] paddedXVelocityChunk = new byte[2];
-
-                    System.arraycopy(
-                        xVelocityChunk,
-                        0,
-                        paddedXVelocityChunk,
-                        0,
-                        xVelocityChunk.length
-                    );
-
-                    goBildaPinpoint.xVelocity = halfToFloat(ByteBuffer
-                        .wrap(paddedXVelocityChunk)
-                        .order(BYTE_ORDER)
-                        .getShort());
-
-                    index += 16;
-
-                    byte[] yVelocityChunk = data
-                        .get(
-                            index,
-                            index + 16
-                        )
-                        .toByteArray();
-
-                    byte[] paddedYVelocityChunk = new byte[2];
-
-                    System.arraycopy(
-                        yVelocityChunk,
-                        0,
-                        paddedYVelocityChunk,
-                        0,
-                        yVelocityChunk.length
-                    );
-
-                    goBildaPinpoint.yVelocity = halfToFloat(ByteBuffer
-                        .wrap(paddedYVelocityChunk)
-                        .order(BYTE_ORDER)
-                        .getShort());
-
-                    index += 16;
-
-                    byte[] hVelocityChunk = data
-                        .get(
-                            index,
-                            index + 16
-                        )
-                        .toByteArray();
-
-                    byte[] paddedHVelocityChunk = new byte[2];
-
-                    System.arraycopy(
-                        hVelocityChunk,
-                        0,
-                        paddedHVelocityChunk,
-                        0,
-                        hVelocityChunk.length
-                    );
-
-                    goBildaPinpoint.hVelocity = halfToFloat(ByteBuffer
-                        .wrap(paddedHVelocityChunk)
-                        .order(BYTE_ORDER)
-                        .getShort());
-
-                    index += 16;
-                }
+                device.parseUpdate(data, index);
+                index += device.getUpdateLength();
             }
         }
     }
