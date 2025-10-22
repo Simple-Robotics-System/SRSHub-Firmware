@@ -26,8 +26,8 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
     private static final int DEVICE_ID = 0x61;
 
     private static final int DEVICE_MAJOR_VERSION = 1;
-    private static final int DEVICE_MINOR_VERSION = 1;
-    private static final int DEVICE_PATCH_VERSION = 1;
+    private static final int DEVICE_MINOR_VERSION = 2;
+    private static final int DEVICE_PATCH_VERSION = 2;
 
     private static final int BITS_PER_ANALOG_DIGITAL_DEVICE = 2;
     private static final int BITS_PER_ENCODER = 2;
