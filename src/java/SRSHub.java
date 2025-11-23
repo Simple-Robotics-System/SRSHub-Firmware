@@ -27,7 +27,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
 
     private static final int DEVICE_MAJOR_VERSION = 1;
     private static final int DEVICE_MINOR_VERSION = 3;
-    private static final int DEVICE_PATCH_VERSION = 2;
+    private static final int DEVICE_PATCH_VERSION = 3;
 
     private static final int BITS_PER_ANALOG_DIGITAL_DEVICE = 2;
     private static final int BITS_PER_ENCODER = 2;
@@ -407,7 +407,10 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
             int bits = Float.floatToIntBits(data);
 
             for (int i = 0; i < 32; i++) {
-                config.set(start + i, ((bits >> (31 - i)) & 1) == 1);
+                config.set(
+                    start + i,
+                    ((bits >> (31 - i)) & 1) == 1
+                );
             }
         }
 
@@ -1269,7 +1272,10 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
                 I2CDevice device = config.i2cBuses[i]
                     .get(j);
 
-                device.parseUpdate(data, index);
+                device.parseUpdate(
+                    data,
+                    index
+                );
                 index += device.getUpdateLength();
             }
         }
