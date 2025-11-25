@@ -26,7 +26,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
     private static final int DEVICE_ID = 0x61;
 
     private static final int DEVICE_MAJOR_VERSION = 1;
-    private static final int DEVICE_MINOR_VERSION = 3;
+    private static final int DEVICE_MINOR_VERSION = 4;
     private static final int DEVICE_PATCH_VERSION = 3;
 
     private static final int BITS_PER_ANALOG_DIGITAL_DEVICE = 2;
@@ -77,6 +77,12 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         public int velocity = 0;
     }
 
+    public static abstract class Command {
+        protected abstract int getLength();
+
+        protected abstract BitSet getData();
+    }
+
     public static abstract class I2CDevice {
         protected abstract int getValue();
 
@@ -92,7 +98,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
     }
 
     public static class APDS9151 extends I2CDevice {
-        private final BitSet config = new BitSet(0);
+        private final BitSet config = new BitSet(getInitLength());
 
         public boolean disconnected = false;
 
@@ -259,7 +265,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
             }
         }
 
-        private final BitSet config = new BitSet(1);
+        private final BitSet config = new BitSet(getInitLength());
 
         public boolean disconnected = false;
 
@@ -328,7 +334,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
     }
 
     public static class VL53L0X extends I2CDevice {
-        private final BitSet config = new BitSet(0);
+        private final BitSet config = new BitSet(getInitLength());
 
         public boolean disconnected = false;
 
@@ -384,9 +390,118 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
     }
 
     public static class GoBildaPinpoint extends I2CDevice {
+        private static final int ID = 3;
+
         public enum EncoderDirection {
             FORWARD,
             REVERSED
+        }
+
+        public static class ResetIMUCommand extends Command {
+            private final BitSet data;
+
+            /**
+             * @param bus the bus of the command's target device
+             */
+            public ResetIMUCommand(int bus) {
+                data = new BitSet(getLength());
+
+                data.set(
+                    0,
+                    (bus & 1) == 1
+                );
+
+                data.set(
+                    1,
+                    (bus >> 1 & 1) == 1
+                );
+
+                int index = 2;
+
+                for (int i = 0; i < BITS_PER_I2C_DEVICE; i++) {
+                    data.set(
+                        index++,
+                        (ID >> i & 1) == 1
+                    );
+                }
+
+                for (int i = 0; i < 4; i++) {
+                    data.set(
+                        index++,
+                        false
+                    );
+                }
+            }
+
+            protected int getLength() {
+                return 10;
+            }
+
+            protected BitSet getData() {
+                return data;
+            }
+        }
+
+        public static class SetPositionCommand extends Command {
+            private final BitSet data;
+
+            /**
+             * @param bus the bus of the command's target device
+             */
+            public SetPositionCommand(int bus, float xPosition, float yPosition, float hOrientation) {
+                data = new BitSet(getLength());
+
+                data.set(
+                    0,
+                    (bus & 1) == 1
+                );
+
+                data.set(
+                    1,
+                    (bus >> 1 & 1) == 1
+                );
+
+                int index = 2;
+
+                for (int i = 0; i < BITS_PER_I2C_DEVICE; i++) {
+                    data.set(
+                        index++,
+                        (ID >> i & 1) == 1
+                    );
+                }
+
+                for (int i = 0; i < 4; i++) {
+                    data.set(
+                        index++,
+                        (1 >> i & 1) == 1
+                    );
+                }
+
+                ByteBuffer buffer = ByteBuffer.allocate(12);
+
+                buffer.putFloat(xPosition);
+                buffer.putFloat(yPosition);
+                buffer.putFloat(hOrientation);
+
+                byte[] payload = buffer.array();
+
+                for (int i = 0; i < payload.length; i++) {
+                    for (int bit = 7; bit >= 0; bit--) {
+                        data.set(
+                            index++,
+                            ((payload[i] >> bit) & 1) == 1
+                        );
+                    }
+                }
+            }
+
+            protected int getLength() {
+                return 106;
+            }
+
+            protected BitSet getData() {
+                return data;
+            }
         }
 
         private final BitSet config;
@@ -402,17 +517,6 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         public float xVelocity;
         public float yVelocity;
         public float hVelocity;
-
-        private void packConfigFloat(int start, float data) {
-            int bits = Float.floatToIntBits(data);
-
-            for (int i = 0; i < 32; i++) {
-                config.set(
-                    start + i,
-                    ((bits >> (31 - i)) & 1) == 1
-                );
-            }
-        }
 
         /**
          * @param xPodOffset the offset of your forward tracking pod from the tracking center in millimeters
@@ -450,7 +554,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         }
 
         protected int getValue() {
-            return 3;
+            return ID;
         }
 
         protected int getInitLength() {
@@ -838,6 +942,11 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         READ(
             0x03,
             -1
+        ),
+
+        COMMAND(
+            0x04,
+            -1
         );
 
         public final byte address;
@@ -1050,9 +1159,7 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         byte[] data = new byte[(initLength + 7) / 8];
 
         System.arraycopy(
-            ByteBuffer
-                .wrap(init.toByteArray())
-                .array(),
+            init.toByteArray(),
             0,
             data,
             0,
@@ -1414,5 +1521,34 @@ public class SRSHub extends I2cDeviceSynchDevice<I2cDeviceSynchSimple> {
         );
 
         return null;
+    }
+
+    /**
+     * runs a command on an I2C device
+     *
+     * @throws IllegalStateException if the SRSHub has not yet been initialized
+     */
+    public void runCommand(Command command) {
+        if (config == null) {
+            throwException(
+                IllegalStateException.class,
+                "The SRSHub must be initialized before reading"
+            );
+        }
+
+        byte[] data = new byte[(command.getLength() + 7) / 8];
+
+        System.arraycopy(
+            command.getData().toByteArray(),
+            0,
+            data,
+            0,
+            command.getData().toByteArray().length
+        );
+
+        deviceClient.write(
+            Register.COMMAND.address,
+            data
+        );
     }
 }
